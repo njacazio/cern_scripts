@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
+from acts.examples.reconstruction import TrackSelectorConfig, TruthEstimatedSeedingAlgorithmConfigArg
+from acts.examples import ParticleSelector
 from acts.examples.reconstruction import (
     addSeeding,
-    TruthSeedRanges,
     SeedFinderConfigArg,
     SeedFinderOptionsArg,
     SeedFilterConfigArg,
     SpacePointGridConfigArg,
     SeedingAlgorithmConfigArg,
-    SeedingAlgorithm,
-    ParticleSmearingSigmas,
     addCKFTracks,
-    CKFPerformanceConfig,
 )
 from acts.examples.simulation import (
     addParticleGun,
@@ -32,22 +30,31 @@ u = acts.UnitConstants
 geo_dir = pathlib.Path.cwd()
 outputDir = pathlib.Path.cwd() / "output/ckf_muongun_100ev_ptmin500MeV_paramsckfv13_cfg10"
 if not outputDir.exists():
-    outputDir.mkdir(mode = 0o777, parents= True, exist_ok= True)
+    outputDir.mkdir(mode=0o777, parents=True, exist_ok=True)
 
-detector, trackingGeometry, decorators = alice3.buildALICE3Geometry(
-    geo_dir, False, False, acts.logging.VERBOSE)
+detector = alice3.buildALICE3Geometry(
+    geo_dir, False, False, acts.logging.INFO)
+trackingGeometry = detector.trackingGeometry()
+decorators = detector.contextDecorators()
 field = acts.ConstantBField(acts.Vector3(0.0, 0.0, 2.0 * u.T))
 rnd = acts.examples.RandomNumbers(seed=42)
 
 
-s = acts.examples.Sequencer(events=100, numThreads=-1)
+s = acts.examples.Sequencer(events=int(1e4),
+                            numThreads=1,
+                            trackFpes=False,
+                            failOnFirstFpe=True,
+                            logLevel=acts.logging.INFO,
+                            )
+
 
 if not heavyion:
     addParticleGun(
         s,
-        MomentumConfig(0.5 * u.GeV, 10.0 * u.GeV, transverse=True),
+        MomentumConfig(0.1 * u.GeV, 100.0 * u.GeV, transverse=True),
         EtaConfig(-4.0, 4.0, uniform=True),
-        ParticleConfig(1, acts.PdgParticle.eMuon, randomizeCharge=True),
+        ParticleConfig(1, acts.PdgParticle.ePionPlus, randomizeCharge=True),
+        multiplicity=10,
         rnd=rnd,
     )
 else:
@@ -70,10 +77,7 @@ s = addFatras(
     s,
     trackingGeometry,
     field,
-    rnd=rnd,
-    preSelectParticles=ParticleSelectorConfig(
-        eta=(0.0, 4.0), pt=(500 * u.MeV, None), removeNeutral=False),
-    outputDirRoot=outputDir,
+    rnd=rnd
 )
 s = addDigitization(
     s,
@@ -83,11 +87,23 @@ s = addDigitization(
     outputDirRoot=outputDir,
     rnd=rnd,
 )
+
+
+ptclSelector = ParticleSelector(
+    level=acts.logging.INFO,
+    inputParticles="particles_generated",
+    outputParticles="particles_selected",
+    removeNeutral=True,
+    absEtaMax=2.5,
+    rhoMax=4.0 * u.mm,
+    ptMin=50 * u.MeV,
+)
+s.addAlgorithm(ptclSelector)
+
 s = addSeeding(
     s,
     trackingGeometry,
     field,
-    TruthSeedRanges(pt=(0.5 * u.GeV, None), eta=(0, 4.0), nHits=(7, None)),
     SeedFinderConfigArg(
         r=(None, 200 * u.mm),
         deltaR=(1. * u.mm, 60 * u.mm),
@@ -114,7 +130,9 @@ s = addSeeding(
             nTopForLargeR=1,
             nTopForSmallR=2,
         ),
-        skipPreviousTopSP=True,
+        # truthEstimatedSeedingAlgorithmConfigArg=TruthEstimatedSeedingAlgorithmConfigArg(
+        #     pt=(0.5 * u.GeV, None), eta=(0, 4.0), nHits=(7, None)),
+        # skipPreviousTopSP=True,
         useVariableMiddleSPRange=True,
         # deltaRMiddleMinSPRange=10 * u.mm,
         # deltaRMiddleMaxSPRange=10 * u.mm,
@@ -183,13 +201,15 @@ s = addSeeding(
     "geoSelection-alice3-cfg10.json",
     outputDirRoot=outputDir,
 )
+
+
 s = addCKFTracks(
     s,
     trackingGeometry,
     field,
-    CKFPerformanceConfig(ptMin=500.0 * u.MeV, nMeasurementsMin=7),
-    outputDirRoot=outputDir,
-    writeTrajectories=True,
+    TrackSelectorConfig(pt=(50.0 * u.MeV, None), nMeasurementsMin=7),
+    outputDirRoot=outputDir
 )
+
 
 s.run()

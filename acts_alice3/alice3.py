@@ -93,6 +93,7 @@ def runALICE3(
             )
 
             jmw.write(trackingGeometry)
+    print("outputDir:", outputDir)
 
 
 def buildALICE3Geometry(
@@ -119,7 +120,7 @@ def buildALICE3Geometry(
     if jsonconfig:
         jsonFile = geo_dir / "tgeo-config.json"
         logger.info("Create geometry from %s", jsonFile.absolute())
-        return TGeoDetector.create(
+        return TGeoDetector(
             jsonFile=str(jsonFile),
             fileName=str(tgeo_fileName),
             surfaceLogLevel=logLevel,
@@ -133,15 +134,15 @@ def buildALICE3Geometry(
     equidistant = TGeoDetector.Config.BinningType.equidistant
     arbitrary = TGeoDetector.Config.BinningType.arbitrary
 
-    return TGeoDetector.create(
+    cfg = TGeoDetector.Config(
         fileName=str(tgeo_fileName),
-        mdecorator=matDeco,
+        # mdecorator=matDeco,
         buildBeamPipe=True,
         unitScalor=10.0,  # explicit units
         beamPipeRadius=3.7 * u.mm,
         beamPipeHalflengthZ=500.0 * u.mm,
         beamPipeLayerThickness=0.1 * u.mm,
-        beampipeEnvelopeR=0.1 * u.mm,
+        beamPipeEnvelopeR=0.1 * u.mm,
         layerEnvelopeR=0.1 * u.mm,
         surfaceLogLevel=logLevel,
         layerLogLevel=logLevel,
@@ -311,6 +312,8 @@ def buildALICE3Geometry(
         ],
     )
 
+    return TGeoDetector(cfg)
+
 
 if "__main__" == __name__:
     p = argparse.ArgumentParser(
@@ -347,10 +350,12 @@ if "__main__" == __name__:
     geo_example_dir = Path(args.geo_dir)
     assert geo_example_dir.exists(), "Detector example input directory missing"
 
-    detector, trackingGeometry, decorators = buildALICE3Geometry(
+    detector = buildALICE3Geometry(
         geo_example_dir,
         material=not args.no_material,
     )
+    trackingGeometry = detector.trackingGeometry()
+    decorators = detector.contextDecorators()
 
     runALICE3(
         trackingGeometry=trackingGeometry,
